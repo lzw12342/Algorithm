@@ -1,4 +1,7 @@
 # Evolution Computation
+## GA
+### Crossover
+- [PMX]()
 ## DE
 ### Mutation
 - [DE/rand/1](https://github.com/lzw12342/Algorithm/blob/main/DE/Mutation/DErand1.m)
