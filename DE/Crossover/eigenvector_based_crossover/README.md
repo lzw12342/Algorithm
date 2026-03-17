@@ -3,9 +3,9 @@ source: An efficient eigenvector-based crossover for differential evolution Simp
 example: 
   eig_P = 0.5; 
   P = InitializePop(...); 
-  params_eig = InitializeEigenCov(P);
+  params_eig = EigenCovInitialization(P);
   for ... 
     V = Mutation(...); 
-    T = Crossover_Eigenvector(P,V,CR,eig_P,eig.C); 
+    T = EigenvectorCrossover(P,V,CR,eig_P,eig.C); 
     P_new,P_fit_new = Selection(...) 
-    params_eig = UpdateEigenCov(P_new, P_fit_new, params_eig)
+    params_eig = EigenCovUpdate(P_new, P_fit_new, params_eig)
