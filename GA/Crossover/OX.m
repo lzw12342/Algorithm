@@ -1,53 +1,49 @@
-function O = OX(P1, P2, CR, n)
-[D, N] = size(P1);
-if nargin < 4
+function O = OX(P, CR, n)
+[D, N] = size(P);
+if nargin < 3
     n = N;
 end
 
-O = P1(:, 1:n);
+O = zeros(D, n);
 
 c1 = randi(D, 1, n);
 c2 = randi(D, 1, n);
 lo = min(c1, c2);
 hi = max(c1, c2);
 
-[~, idx_p1] = sort(rand(N, n), 1);
-[~, idx_p2] = sort(rand(N, n), 1);
-p1_sel = idx_p1(1, :);
-p2_sel = idx_p2(1, :);
-
+[~, idx] = sort(rand(N, n), 1);
+p1_sel   = idx(1, :);
+p2_sel   = idx(2, :);
 do_cross = rand(1, n) <= CR;
 
+% 预分配复用的临时数组，避免循环内重复申请内存
+in_seg = false(1, D);
+cycle  = zeros(1, D-1);
+
 for i = 1:n
-    p1 = P1(:, p1_sel(i))';
+    p1 = P(:, p1_sel(i))';
 
     if ~do_cross(i)
         O(:, i) = p1';
         continue
     end
 
-    p2 = P2(:, p2_sel(i))';
+    p2 = P(:, p2_sel(i))';
     l  = lo(i);
     h  = hi(i);
 
-    % 区间掩码
-    in_seg         = false(1, D);
-    in_seg(l:h)    = true;
+    % 复用预分配数组，reset 只改动的部分
+    in_seg(:)   = false;
+    in_seg(l:h) = true;
 
-    % 循环遍历顺序：从 h+1 开始绕一圈，共 D-1 个位置
-    cycle          = mod((h:h+D-2), D) + 1;  % (1 × D-1)
+    cycle(:)    = mod((h:h+D-2), D) + 1;
 
-    % 待填位置 = cycle 中不在区间内的位置
-    fill_pos       = cycle(~in_seg(cycle));
+    % out_mask 只算一次，供 fill_pos 和 fill_vals 共用
+    out_mask    = ~in_seg(cycle);        % (1 × D-1) logical
 
-    % p2 按 cycle 顺序中不在区间内的元素
-    p2_cycle       = p2(cycle);
-    fill_vals      = p2_cycle(~in_seg(p2_cycle));
-
-    % 组装子代
-    t              = zeros(1, D);
-    t(l:h)         = p1(l:h);
-    t(fill_pos)    = fill_vals;
+    t           = zeros(1, D);
+    t(l:h)      = p1(l:h);
+    t(cycle(out_mask)) = p2(cycle(out_mask));
 
     O(:, i) = t';
 end
