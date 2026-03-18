@@ -1,61 +1,83 @@
-function O = PMX(P, CR, n)
-    [D, N] = size(P);
-    if nargin < 3, n = N; end
+function [O1, O2] = PMX(P, PI1, PI2)
+% PMX Partially Mapped Crossover (Partially Mapped Crossover)
+% Input:
+%   P    : D×N population matrix (permutation encoding, each column is an individual)
+%   PI1  : 1×n or n×1 vector, indices of first parents
+%   PI2  : 1×n or n×1 vector, indices of second parents
+% Output:
+%   O1   : D×n offspring 1 matrix (template from parent 1 + mapped segment from parent 2)
+%   O2   : D×n offspring 2 matrix (template from parent 2 + mapped segment from parent 1)
+
+    D = size(P,1);
     
-    % 预计算交叉点
-    c1 = randi(D, 1, n);
-    c2 = randi(D, 1, n);
-    lo = min(c1, c2);
-    hi = max(c1, c2);
+    % Force row vectors
+    PI1 = PI1(:)';  
+    PI2 = PI2(:)';  
+    n = length(PI1);
     
-    % 样本选择
-    [~, idx] = sort(rand(N, n), 1);
-    p1_sel = idx(1, :);
-    p2_sel = idx(2, :);
-    do_cross = rand(1, n) <= CR;
+    if length(PI2) ~= n
+        error('PI1 and PI2 must have the same length');
+    end
     
-    % 预分配输出，直接按列继承 p1
-    O = P(:, p1_sel); 
+    O1 = zeros(D, n);
+    O2 = zeros(D, n);
     
-    % 预分配辅助空间（列向量），避免循环内重复创建内存
-    inv_v = zeros(D, 1);
-    used = false(D, 1);
+    % Reusable auxiliary arrays
+    mapping = zeros(D, 1);     % mapping table
+    used    = false(D, 1);     % used flags
     
     for i = 1:n
-        if ~do_cross(i), continue; end
+        % Random crossover points
+        c1 = randi(D);
+        c2 = randi(D);
+        left  = min(c1, c2);
+        right = max(c1, c2);
         
-        % --- 消除转置：直接提取列向量 ---
-        p1 = P(:, p1_sel(i));
-        p2 = P(:, p2_sel(i));
+        p1 = P(:, PI1(i));
+        p2 = P(:, PI2(i));
         
-        l = lo(i); h = hi(i);
-        seg_p2 = p2(l:h);
+        % ──────────────── Offspring 1: base = p1, swap segment from p2 ────────────────
+        o1 = p1;
+        segment = p2(left:right);
+        o1(left:right) = segment;
         
-        % 建立反向映射表 (Inverse Mapping)
-        % 映射关系：值 -> 在 p2 中的索引
-        inv_v(p2) = 1:D;
+        % Build mapping: value in p2 segment → corresponding value in p1 segment
+        mapping(p2(left:right)) = p1(left:right);
         
-        % 标记 p2 段中已经存在的基因
         used(:) = false;
-        used(seg_p2) = true;
+        used(segment) = true;
         
-        % 初始化子代列向量
-        t = p1;
-        t(l:h) = seg_p2;
-        
-        % 处理区间外的冲突 (Mapping phase)
-        % 直接遍历预定义的非区间索引，避免使用 find()
-        for j = [1:l-1, h+1:D]
+        % Resolve conflicts outside the segment
+        for j = [1:left-1, right+1:D]
             val = p1(j);
-            % 如果 p1 这里的基因已经在 p2 的段中了，则产生冲突
             while used(val)
-                % 通过映射表找到该值在 p2 段中对应位置在 p1 中的值
-                val = p1(inv_v(val));
+                val = mapping(val);
             end
-            t(j) = val;
+            o1(j) = val;
+            used(val) = true;  % mark as used (optional but safer)
         end
         
-        % --- 直接按列赋值 ---
-        O(:, i) = t;
+        O1(:, i) = o1;
+        
+        % ──────────────── Offspring 2: base = p2, swap segment from p1 ────────────────
+        o2 = p2;
+        segment = p1(left:right);
+        o2(left:right) = segment;
+        
+        mapping(p1(left:right)) = p2(left:right);
+        
+        used(:) = false;
+        used(segment) = true;
+        
+        for j = [1:left-1, right+1:D]
+            val = p2(j);
+            while used(val)
+                val = mapping(val);
+            end
+            o2(j) = val;
+            used(val) = true;
+        end
+        
+        O2(:, i) = o2;
     end
 end
