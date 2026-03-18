@@ -1,6 +1,7 @@
 # Evolution Computation
 ## GA
 ### Crossover
+- [LogX](https://github.com/lzw12342/Algorithm/blob/main/GA/Crossover/LogX.m)
 - [OX](https://github.com/lzw12342/Algorithm/blob/main/GA/Crossover/OX.m)
 - [PMX](https://github.com/lzw12342/Algorithm/blob/main/GA/Crossover/PMX.m)
 ## DE
