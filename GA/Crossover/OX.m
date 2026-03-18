@@ -1,57 +1,83 @@
-function O = OX(P, CR, n)
-    [D, N] = size(P);
-    if nargin < 3, n = N; end
+function [O1, O2] = OX(P, PI1, PI2)
+% OX Order Crossover (OX)
+% Input:
+%   P    : D×N population matrix (permutation encoding, each column is an individual)
+%   PI1  : 1×n or n×1 vector, indices of first parents
+%   PI2  : 1×n or n×1 vector, indices of second parents
+% Output:
+%   O1   : D×n offspring 1 (keeps segment from parent 1, fills from parent 2 in order)
+%   O2   : D×n offspring 2 (keeps segment from parent 2, fills from parent 1 in order)
+
+    [D, ~] = size(P);
     
-    % 随机与选择逻辑保持不变
-    c1 = randi(D, 1, n);
-    c2 = randi(D, 1, n);
-    lo = min(c1, c2);
-    hi = max(c1, c2);
+    % Force row vectors
+    PI1 = PI1(:)';  
+    PI2 = PI2(:)';  
+    n = length(PI1);
     
-    [~, idx] = sort(rand(N, n), 1);
-    p1_sel = idx(1, :);
-    p2_sel = idx(2, :);
-    do_cross = rand(1, n) <= CR;
+    if length(PI2) ~= n
+        error('PI1 and PI2 must have the same length');
+    end
     
-    % 预分配输出，默认继承 p1 对应列
-    O = P(:, p1_sel); 
+    O1 = zeros(D, n);
+    O2 = zeros(D, n);
     
-    % 预分配布尔查找表（列向量）
+    % Generate random crossover points for each pair
+    C1_rnd = randi(D, 1, n);
+    C2_rnd = randi(D, 1, n);
+    C1 = min(C1_rnd, C2_rnd);
+    C2 = max(C1_rnd, C2_rnd);
+    
+    % Reusable lookup table
     in_seg = false(D, 1);
     
     for i = 1:n
-        if ~do_cross(i), continue; end
+        c1 = C1(i);
+        c2 = C2(i);
+        len_suffix = D - c2;
         
-        % 直接提取列向量，不转置
-        p1 = P(:, p1_sel(i));
-        p2 = P(:, p2_sel(i));
-        l = lo(i); h = hi(i);
+        p1 = P(:, PI1(i));
+        p2 = P(:, PI2(i));
         
-        % 1. 提取 p1 保留片段
-        seg_p1 = p1(l:h);
+        % ──────────────── Offspring 1: segment from p1, rest from p2 in order ────────────────
+        seg = p1(c1:c2);
         
-        % 2. 构造 p2 的填充序列 (纵向拼接保持列向量)
-        p2_rotated = [p2(h+1:D); p2(1:h)];
+        % Rotated p2 (starting after c2)
+        p2_rotated = [p2(c2+1:D); p2(1:c2)];
         
-        % 3. 快速过滤 (利用线性索引)
         in_seg(:) = false;
-        in_seg(seg_p1) = true;
+        in_seg(seg) = true;
         to_fill = p2_rotated(~in_seg(p2_rotated));
         
-        % 4. 直接在列向量 t 上操作
-        t = zeros(D, 1);
-        t(l:h) = seg_p1;
+        o = zeros(D, 1);
+        o(c1:c2) = seg;
         
-        num_suffix = D - h;
-        if num_suffix > 0
-            t(h+1:D) = to_fill(1:num_suffix);
-            t(1:l-1) = to_fill(num_suffix+1:end);
+        if len_suffix > 0
+            o(c2+1:D)     = to_fill(1:len_suffix);
+            o(1:c1-1)     = to_fill(len_suffix+1:end);
         else
-            % 如果 h 正好是 D，则全部填在前面
-            t(1:l-1) = to_fill;
+            o(1:c1-1)     = to_fill;
         end
+        O1(:, i) = o;
         
-        % 赋值回 O 的第 i 列，无需转置
-        O(:, i) = t;
+        % ──────────────── Offspring 2: segment from p2, rest from p1 in order ────────────────
+        seg = p2(c1:c2);
+        
+        p1_rotated = [p1(c2+1:D); p1(1:c2)];
+        
+        in_seg(:) = false;
+        in_seg(seg) = true;
+        to_fill = p1_rotated(~in_seg(p1_rotated));
+        
+        o = zeros(D, 1);
+        o(c1:c2) = seg;
+        
+        if len_suffix > 0
+            o(c2+1:D)     = to_fill(1:len_suffix);
+            o(1:c1-1)     = to_fill(len_suffix+1:end);
+        else
+            o(1:c1-1)     = to_fill;
+        end
+        O2(:, i) = o;
     end
 end
