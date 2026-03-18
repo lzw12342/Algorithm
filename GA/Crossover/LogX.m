@@ -1,45 +1,43 @@
-function [O1, O2] = LogX(P, PI1, PI2, eta)
-% LogX Logistic Crossover (LogX)
-% Input:
-%   P    : D×N population matrix (real-valued or integer encoding)
-%   PI1  : 1×n or n×1 vector, indices of first parents
-%   PI2  : 1×n or n×1 vector, indices of second parents
-%   eta  : scale parameter s (default = 1.0)
-% Output:
-%   O1   : D×n offspring 1  (avg + β·|p1-p2|)
-%   O2   : D×n offspring 2  (avg - β·|p1-p2|)
+function [O1, O2] = LogX(P, I1, I2, s)
+% LogX - Logistic Crossover (symmetric around the parents' midpoint)
+%
+% Inputs:
+%   P     : D × N matrix, population
+%   I1    : 1 × n vector, indices of first parents
+%   I2    : 1 × n vector, indices of second parents
+%   s     : scale parameter s (controls perturbation strength)
+%           recommended values:
+%             0.8 – 1.2     most common / balanced
+%             1.0           default & usually good starting point
+%             1.3 – 1.8     stronger exploration (when stuck in local optima)
+%             0.5 – 0.8     more exploitation / finer search (when already close to good region)
+%
+% Outputs:
+%   O1, O2 : two offspring matrices (D × n)
 
-    if nargin < 4 || isempty(eta)
-        eta = 1.0;
+    if nargin < 4 || isempty(s)
+        s = 1.0;           % most papers / implementations use 1.0
     end
     
-    [D, ~] = size(P);
+    D = size(P, 1);
+    I1 = I1(:)';  
+    I2 = I2(:)';  
+    n  = length(I1);
     
-    % Force row vectors
-    PI1 = PI1(:)';  
-    PI2 = PI2(:)';  
-    n = length(PI1);
-    
-    if length(PI2) ~= n
-        error('PI1 and PI2 must have the same length');
+    if length(I2) ~= n
+        error('I1 and I2 must have the same length');
     end
     
-    % Generate D×n uniform random numbers [0,1]
+    % Generate logistic-distributed perturbation factors
     u = rand(D, n);
+    beta = -s * log((1 - u) ./ u);   % logistic variate (mean=0, scale=s)
     
-    % Logistic random variate: β = -s · log((1-u)/u)
-    % (location μ=0, scale s=eta)
-    beta = -eta * log((1 - u) ./ u);
-    
-    % Extract parents
-    p1 = P(:, PI1);   % D × n
-    p2 = P(:, PI2);   % D × n
-    
-    % Center and absolute difference
-    avg   = 0.5 * (p1 + p2);
+    p1   = P(:, I1);
+    p2   = P(:, I2);
+    avg  = 0.5 * (p1 + p2);
     delta = abs(p1 - p2);
     
-    % Two complementary offspring
-    O1 = avg + beta .* delta;   % η style (positive perturbation)
-    O2 = avg - beta .* delta;   % ξ style (negative perturbation)
+    % Two symmetric offspring
+    O1 = avg + beta .* delta;
+    O2 = avg - beta .* delta;
 end
