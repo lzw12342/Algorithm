@@ -1,46 +1,53 @@
-function P = MTPM(P, lb, ub, MR, m_exp)
+function P = MTPM(P, lb, ub, scale)
+    % MTPM - Makinen-Periaux-Toivanen Mutation operator
+    %   Applies a non-uniform, boundary-respecting mutation to real-coded variables.
+    %   Originally proposed in Mäkinen et al. (1999) for numerical optimization.
+    %
+    % Inputs:
+    %   P       : D × N matrix – current population (each column is one individual)
+    %   lb      : D × 1 vector – lower bounds for each dimension
+    %   ub      : D × 1 vector – upper bounds for each dimension
+    %   scale   : scalar – mutation exponent (controls how strongly mutation prefers
+    %                     small changes; larger values → smaller typical perturbations)
+    %
+    % Output:
+    %   P       : D × N matrix – mutated population (same size as input)
+
     [D, N] = size(P);
     
-    % 1. 预先确定变异掩码（性能第一步：只处理需要变异的元素）
-    mutate_mask = rand(D, N) < MR;
-    if ~any(mutate_mask, 'all'), return; end
+    % Create dimension index matrix (row index repeated across all individuals)
+    dim_idx = repmat((1:D)', 1, N);
     
-    % 2. 向量化索引优化：避免在大矩阵上使用 repmat
-    % 获取需要变异的元素在 P 中的线性索引
-    idx_flat = find(mutate_mask);
-    [rows, ~] = ind2sub([D, N], idx_flat); % 获取对应的维度索引
+    % Broadcast lower and upper bounds to match the shape of P
+    lbi = lb(dim_idx);    % D × N matrix of lower bounds
+    ubi = ub(dim_idx);    % D × N matrix of upper bounds
     
-    % 提取设计变量及其物理边界
-    xi_phys = P(idx_flat);
-    lbi = lb(rows);
-    ubi = ub(rows);
-    
-    % 3. 归一化（就地计算，减少中间变量）
+    % Normalize decision variables to the interval [0, 1]
     range_i = ubi - lbi;
-    t = (xi_phys - lbi) ./ range_i;
+    t = (P - lbi) ./ range_i;
     
-    % 4. 核心算子优化
-    r = rand(size(t));
-    t_new = t;
+    % Generate uniform random numbers in [0,1] to decide mutation direction
+    r = rand(D, N);
     
-    % 情况 A: r < t (向左变异)
+    % Two-phase mutation (left and right sides of current position)
+    
+    % Phase 1: Mutation towards the lower bound (when r < t)
     mask_l = r < t;
-    if any(mask_l)
+    if any(mask_l, 'all')
         tl = t(mask_l);
-        % 原公式还原：t_new = t - t * ((t - r) / t)^m_exp
-        % 性能优化：利用点幂运算
-        t_new(mask_l) = tl - tl .* ((tl - r(mask_l)) ./ max(tl, eps)) .^ m_exp;
+        delta = (tl - r(mask_l)) ./ max(tl, eps);     % avoid division by zero
+        t(mask_l) = tl - tl .* (delta .^ scale);
     end
     
-    % 情况 B: r >= t (向右变异)
+    % Phase 2: Mutation towards the upper bound (when r >= t)
     mask_r = ~mask_l;
-    if any(mask_r)
+    if any(mask_r, 'all')
         tr = t(mask_r);
-        % 原公式还原：t_new = t + (1 - t) * ((r - t) / (1 - t))^m_exp
         one_minus_tr = 1 - tr;
-        t_new(mask_r) = tr + one_minus_tr .* ((r(mask_r) - tr) ./ max(one_minus_tr, eps)) .^ m_exp;
+        delta = (r(mask_r) - tr) ./ max(one_minus_tr, eps);   % avoid division by zero
+        t(mask_r) = tr + one_minus_tr .* (delta .^ scale);
     end
     
-    % 5. 反归一化并写回（直接在索引位置修改，避免全矩阵操作）
-    P(idx_flat) = lbi + max(0, min(1, t_new)) .* range_i;
+    % Denormalize back to original bounds and enforce hard boundaries
+    P = lbi + max(0, min(1, t)) .* range_i;
 end
