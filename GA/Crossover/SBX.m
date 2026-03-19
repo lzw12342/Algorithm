@@ -1,61 +1,40 @@
-function [O1, O2] = SBX(P, I1, I2, eta)
+function [O1, O2] = SBX(P1, P2, ni)
 % SBX - Simulated Binary Crossover for real-valued variables
-% Vectorized version (random numbers generated outside the loop)
+%
+% Inputs:
+%   P1 : D × n matrix, first parents
+%   P2 : D × n matrix, second parents
+%   ni : distribution index (controls offspring spread around parents)
+%        recommended values:
+%          2  – 5   wide spread, strong exploration
+%          10 – 20  moderate (default 20, most common in NSGA-II)
+%          30 – 50  tight spread, strong exploitation / fine-tuning
+%
+% Outputs:
+%   O1, O2 : two offspring matrices (D × n)
 
-    if nargin < 4 || isempty(eta)
-        eta = 20;
-    end
-    
-    D = size(P, 1);
-    I1 = I1(:)';  
-    I2 = I2(:)';  
-    n  = length(I1);
-    
-    if length(I2) ~= n
-        error('I1 and I2 must have the same length');
-    end
-    
-    % Pre-generate all random numbers at once (D × n matrix)
-    u = rand(D, n);
-    
-    % Decide which pairs perform crossover
-    do_crossover = rand(1, n) < 0.9;   % or use fixed CR if preferred
-    
-    % Extract parents (D × n)
-    p1 = P(:, I1);
-    p2 = P(:, I2);
-    
-    % Initialize offspring
-    O1 = p1;  % copy parents as default
-    O2 = p2;
-    
-    % Only compute for pairs that actually crossover
-    if ~any(do_crossover)
-        return;
-    end
-    
-    active = find(do_crossover);
-    na = length(active);
-    
-    % Subset for active pairs
-    u_active   = u(:, active);         % D × na
-    p1_active  = p1(:, active);
-    p2_active  = p2(:, active);
-    
-    % Compute beta (vectorized)
-    beta = zeros(D, na);
-    
-    mask = u_active <= 0.5;
-    beta(mask)  = (2 * u_active(mask)) .^ (1 / (eta + 1));
-    
-    mask_inv = ~mask;
-    beta(mask_inv) = (1 ./ (2 * (1 - u_active(mask_inv)))) .^ (1 / (eta + 1));
-    
-    % Generate children (vectorized)
-    child1 = 0.5 * ((1 + beta) .* p1_active + (1 - beta) .* p2_active);
-    child2 = 0.5 * ((1 - beta) .* p1_active + (1 + beta) .* p2_active);
-    
-    % Write back to output
-    O1(:, active) = child1;
-    O2(:, active) = child2;
+if nargin < 3 || isempty(ni)
+    ni = 20;
+end
+
+% Validate dimensions
+if ~isequal(size(P1), size(P2))
+    error('P1 and P2 must have the same dimensions (D × n)');
+end
+
+[D, n] = size(P1);
+
+% Uniform random numbers for beta computation
+u = rand(D, n);
+
+% Compute spread factor beta via inverse CDF of SBX distribution
+beta          = zeros(D, n);
+mask          = u <= 0.5;
+beta( mask)   = (2 .* u( mask))                   .^ (1 / (ni + 1));
+beta(~mask)   = (1 ./ (2 .* (1 - u(~mask))))      .^ (1 / (ni + 1));
+
+% Generate two symmetric offspring around the parents
+O1 = 0.5 * ((1 + beta) .* P1 + (1 - beta) .* P2);
+O2 = 0.5 * ((1 - beta) .* P1 + (1 + beta) .* P2);
+
 end
