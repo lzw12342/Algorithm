@@ -1,403 +1,194 @@
-function [bestX, bestF, history] = MFEA_real(Tasks, params)
-%MFEA 多因子进化算法（对照 Gupta et al. 2016）
-%
-% 用法：
-%   [bestX, bestF]          = MFEA_real(Tasks, params)   % 不记录 history
-%   [bestX, bestF, history] = MFEA_real(Tasks, params)   % 记录每代最优值
-%
-% Tasks : 1×K cell，每个元素是结构体，包含字段：
-%           .dim  — 决策变量维度
-%           .lb   — 下界向量 (dim×1)
-%           .ub   — 上界向量 (dim×1)
-%           .func — 目标函数句柄 f(x)，x 已解码到实际搜索空间
-%           .name — （可选）任务名称字符串
-%
-% params: 结构体，可选字段（缺省值见下）：
-%           .N          种群大小                      (默认 100)
-%           .maxGen     最大代数                      (默认 500)
-%           .rmp        随机交配概率                  (默认 0.3)
-%           .pc         SBX 触发概率                  (默认 0.9)
-%           .pm         每维变异概率                  (默认 1/D)
-%           .eta_c      SBX 分布指数                  (默认 20)
-%           .eta_m      PM  分布指数                  (默认 20)
-%           .bfgs_iter  BFGS 局部搜索最大迭代步数     (默认 5，0 表示不做局部搜索)
-%           .bfgs_tol   BFGS 梯度收敛阈值             (默认 1e-6)
-%           .verbose    是否打印进度                  (默认 true)
+function [bestX, bestF] = MFEA(Tasks, params)
+% MFEA - Multi-Factorial Evolutionary Algorithm
+% Implementation strictly following Gupta, Ong, Feng, IEEE Trans. Evolutionary Computation, 2016
+% Key features:
+%   - Implicit genetic transfer via assortative mating and vertical cultural transmission
+%   - Individuals evaluated only on the task corresponding to their skill factor (after initialization)
+%   - Scalar fitness based on intra-task ranking within skill factor subgroups
+%   - (μ+λ)-selection using scalar fitness
 
-    recordHistory = (nargout == 3);
+    K      = numel(Tasks);                    % number of tasks
+    D      = GetParam(params, 'dim',    30);  % dimensionality of search space
+    N      = GetParam(params, 'N',     100);  % population size
+    maxGen = GetParam(params, 'maxGen', 50);  % maximum number of generations
+    rmp    = GetParam(params, 'rmp',   0.3);  % random mating probability
+    pc     = GetParam(params, 'pc',    0.9);  % crossover probability
+    pm     = GetParam(params, 'pm',    1/D);  % mutation probability
+    eta_c  = GetParam(params, 'eta_c',  20);  % SBX distribution index
+    eta_m  = GetParam(params, 'eta_m',  20);  % polynomial mutation distribution index
 
-    K        = length(Tasks);
-    N        = GetParam(params, 'N',         100);
-    maxGen   = GetParam(params, 'maxGen',    500);
-    rmp      = GetParam(params, 'rmp',       0.3);
-    pc       = GetParam(params, 'pc',        0.9);
-    eta_c    = GetParam(params, 'eta_c',     20);
-    eta_m    = GetParam(params, 'eta_m',     20);
-    bfgsIter = GetParam(params, 'bfgs_iter', 5);
-    bfgsTol  = GetParam(params, 'bfgs_tol',  1e-6);
-    verbose  = GetParam(params, 'verbose',   true);
+    % ── Initialization Phase ─────────────────────────────────────
+    % Step 1: Generate initial population uniformly in [0,1]^D
+    Pop = rand(D, N);
 
-    D       = max(cellfun(@(t) t.dim, Tasks));
-    pm_rate = GetParam(params, 'pm', 1/D);
-
-    % lb/range 预计算，避免循环内重复取结构体字段和做减法
-    TaskLb    = cellfun(@(t) t.lb(:),           Tasks, 'UniformOutput', false);
-    TaskRange = cellfun(@(t) t.ub(:) - t.lb(:), Tasks, 'UniformOutput', false);
-    TaskDim   = cellfun(@(t) t.dim,             Tasks);
-
-    % bfgsIter 判断提到循环外，用函数句柄分派，消除 2N*maxGen 次冗余判断
-    if bfgsIter > 0
-        EvalOffspring = @(chrom, k) EvalWithBfgs(chrom, Tasks{k}, TaskLb{k}, TaskRange{k}, bfgsIter, bfgsTol);
-    else
-        EvalOffspring = @(chrom, k) EvalDirect(chrom, Tasks{k}, TaskLb{k}, TaskRange{k});
-    end
-
-    %% 初始化种群（Algorithm 1, Step 1-3）
-    Pop   = rand(D, N);
-    FCost = EvaluateAll(Pop, Tasks, TaskLb, TaskRange, TaskDim, K, N);
-    [~, ~, Skill] = CalcMetrics(FCost);
-
-    % 从初始全量评估提取各任务初始最优，作为 history/bestF 基准
-    bestF = inf(1, K);
-    bestX = cell(1, K);
+    % Step 2: Full factorial evaluation (all individuals evaluated on all tasks)
+    FCostFull = zeros(K, N);
     for k = 1:K
-        [bestF(k), idx] = min(FCost(k,:));
-        bestX{k}        = TaskLb{k} + Pop(1:TaskDim(k), idx) .* TaskRange{k};
+        for i = 1:N
+            FCostFull(k,i) = Tasks{k}(Pop(:,i));
+        end
     end
 
-    if recordHistory
-        history.bestFitness = repmat(bestF, maxGen, 1);
+    % Step 3: Assign initial skill factors based on best factorial rank
+    Rank = zeros(K, N);
+    for k = 1:K
+        [~, ord] = sort(FCostFull(k,:));
+        Rank(k, ord) = 1:N;
+    end
+    [~, Skill] = min(Rank, [], 1);   % skill factor τ_i = argmin_k {rank_k(i)}
+
+    % Step 4: Extract single factorial cost corresponding to skill factor
+    Cost = FCostFull(sub2ind([K N], Skill, 1:N));
+
+    % Step 5: Record best solutions from initial full evaluation
+    bestF = min(FCostFull, [], 2)';
+    bestX = zeros(D, K);
+    for k = 1:K
+        [~, idx] = min(FCostFull(k,:));
+        bestX(:,k) = Pop(:,idx);
     end
 
-    %% 主循环（Algorithm 1, Step 4）
+    % Release full cost matrix (memory optimization)
+    clear FCostFull;
+
+    % ── Generational Loop ────────────────────────────────────────
     for gen = 1:maxGen
 
-        % 交配产生子代（Algorithm 2 + Algorithm 3）
-        [OffPop, OffSkill] = Mating(Pop, Skill, N, D, rmp, pc, pm_rate, eta_c, eta_m);
+        % ── Offspring Generation via Assortative Mating ──────────
+        idx_perm = randperm(N);
+        OffPop   = zeros(D, N);
+        OffSkill = zeros(1, N);
+        OffCost  = zeros(1, N);
 
-        % 子代评估（+ 可选 Lamarckian BFGS）
-        OffCost = inf(K, 2*N);
-        for i = 1:2*N
-            k = OffSkill(i);
-            [OffPop(:,i), OffCost(k,i)] = EvalOffspring(OffPop(:,i), k);
-        end
+        ci = 1;
+        for i = 1:2:N-1
+            p1 = idx_perm(i);
+            p2 = idx_perm(i+1);
+            s1 = Skill(p1);
+            s2 = Skill(p2);
 
-        % 环境选择（Algorithm 1, Step v）
-        [Pop, FCost, Skill] = Selection(Pop, FCost, OffPop, OffCost, N);
-
-        % 更新全局最优
-        for k = 1:K
-            [curBest, idx] = min(FCost(k,:));   % min 对 inf 安全
-            if curBest < bestF(k)
-                bestF(k) = curBest;
-                bestX{k} = TaskLb{k} + Pop(1:TaskDim(k), idx) .* TaskRange{k};
-            end
-        end
-
-        % 记录 history（recordHistory 在循环外已确定，此处无条件写入）
-        if recordHistory
-            history.bestFitness(gen, :) = bestF;
-        end
-
-        if verbose && mod(gen, 100) == 0
-            fprintf('Gen %4d | ', gen);
-            for k = 1:K
-                fprintf('%s: %.2e | ', GetName(Tasks{k}, k), bestF(k));
-            end
-            fprintf('\n');
-        end
-    end
-
-    if recordHistory
-        history.finalFitness = bestF;
-        % 截断到极小正数，避免调用方 semilogy 遇到 log(0)
-        history.bestFitness  = max(history.bestFitness, 1e-16);
-    end
-end
-
-
-%% =========================================================
-%  EvalDirect / EvalWithBfgs：子代评估策略
-%% =========================================================
-function [chrom, fx] = EvalDirect(chrom, Task, lb, range)
-    x  = lb + chrom(1:Task.dim) .* range;
-    fx = Task.func(x);
-end
-
-function [chrom, fx] = EvalWithBfgs(chrom, Task, lb, range, maxIter, tol)
-    x       = lb + chrom(1:Task.dim) .* range;
-    [x, fx] = BfgsLocal(x, Task, lb, range, maxIter, tol);
-    chrom(1:Task.dim) = max(0, min(1, (x - lb) ./ range));
-end
-
-
-%% =========================================================
-%  BfgsLocal：轻量级有界 BFGS 局部搜索（Lamarckian learning）
-%% =========================================================
-function [xBest, fBest] = BfgsLocal(x0, Task, lb, range, maxIter, eps_g)
-    ub    = lb + range;
-    f     = Task.func;
-    n     = Task.dim;
-    In    = eye(n);
-    eps_g2 = eps_g^2;                   % 平方阈值，配合 g'*g 避免 sqrt
-
-    x     = max(lb, min(ub, x0));
-    fx    = f(x);
-    H     = In;
-    xBest = x;
-    fBest = fx;
-
-    g  = NumericalGrad(f, x, fx, n);
-    gg = g' * g;
-    if gg < eps_g2, return; end
-
-    for iter = 1:maxIter 
-        d  = -H * g;
-        dg = d' * g;
-
-        if dg >= 0
-            H  = In;
-            d  = -g;
-            dg = -gg;
-        end
-
-        alpha = WolfeLineSearch(f, x, fx, dg, d, lb, ub);
-
-        xNew = max(lb, min(ub, x + alpha * d));
-        fNew = f(xNew);
-        gNew = NumericalGrad(f, xNew, fNew, n);
-
-        s  = xNew - x;
-        y  = gNew - g;
-        sy = s' * y;
-        if sy > 1e-10
-            rho = 1 / sy;
-            Hy  = H * y;
-            H   = H - rho * (s * Hy' + Hy * s') + (rho^2 * (y' * Hy) + rho) * (s * s');
-        end
-
-        x  = xNew;
-        fx = fNew;
-        g  = gNew;
-        gg = g' * g;
-
-        if fx < fBest
-            xBest = x;
-            fBest = fx;
-        end
-
-        if gg < eps_g2,                                      break; end
-        if abs(fx - fBest) < 1e-12 * (1 + abs(fBest)),      break; end
-    end
-end
-
-
-%% ---------------------------------------------------------
-%  NumericalGrad：前向差分数值梯度，原地扰动避免向量拷贝
-%% ---------------------------------------------------------
-function g = NumericalGrad(f, x, fx, n)
-    h = max(1e-8, abs(x) * 1e-6);
-    g = zeros(n, 1);
-    for j = 1:n
-        xj   = x(j);
-        x(j) = xj + h(j);
-        g(j) = (f(x) - fx) / h(j);
-        x(j) = xj;
-    end
-end
-
-
-%% ---------------------------------------------------------
-%  WolfeLineSearch：回退式 Armijo 线搜索
-%% ---------------------------------------------------------
-function alpha = WolfeLineSearch(f, x, fx, dg, d, lb, ub)
-    alpha   = 1.0;
-    c1dg    = 1e-4 * dg;
-    rho     = 0.5;
-    maxBack = 20;
-
-    for iBack = 1:maxBack 
-        xNew = max(lb, min(ub, x + alpha * d));
-        if f(xNew) <= fx + alpha * c1dg
-            break;
-        end
-        alpha = alpha * rho;
-    end
-end
-
-
-%% =========================================================
-%  Mating：Assortative Mating + Vertical Cultural Transmission
-%  Algorithm 2 & Algorithm 3
-%% =========================================================
-function [OffPop, OffSkill] = Mating(Pop, Skill, N, D, rmp, pc, pm_rate, eta_c, eta_m)
-    OffPop   = zeros(D, 2*N);
-    OffSkill = zeros(1, 2*N);
-
-    parents    = randi(N, 2, N);
-    cross_rand = rand(1, N);
-    skill_rand = rand(1, 2*N);
-
-    for i = 1:N
-        p1 = parents(1,i);  p2 = parents(2,i);
-        s1 = Skill(p1);     s2 = Skill(p2);
-        c1_idx = 2*i-1;     c2_idx = 2*i;
-
-        if (s1 == s2) || (cross_rand(i) < rmp)
-            [c1, c2] = Sbx(Pop(:,p1), Pop(:,p2), D, pc, eta_c);
-            % s1==s2 时无需随机，直接继承；否则按 50% 概率互换
-            if s1 == s2
-                sk1 = s1;  sk2 = s2;
+            % Assortative mating: crossover if same skill or with probability rmp
+            if s1 == s2 || rand() < rmp
+                [c1, c2] = SBX(Pop(:,p1), Pop(:,p2), D, pc, eta_c);
+                sk1 = s1; sk2 = s2;
+                if s1 ~= s2
+                    % Vertical cultural transmission: random inheritance of skill factor
+                    if rand() < 0.5, sk1 = s2; end
+                    if rand() < 0.5, sk2 = s1; end
+                end
             else
-                sk1 = s1 + (s2 - s1) * (skill_rand(c1_idx) < 0.5);
-                sk2 = s2 + (s1 - s2) * (skill_rand(c2_idx) < 0.5);
+                % Unrelated mating: only mutation, skill factor inherited
+                c1  = PolyMut(Pop(:,p1), D, pm, eta_m);
+                c2  = PolyMut(Pop(:,p2), D, pm, eta_m);
+                sk1 = s1;
+                sk2 = s2;
             end
-        else
-            c1  = Pm(Pop(:,p1), D, eta_m, pm_rate);
-            c2  = Pm(Pop(:,p2), D, eta_m, pm_rate);
-            sk1 = s1;
-            sk2 = s2;
+
+            % Offspring evaluated only on task corresponding to inherited skill factor
+            if ci <= N
+                OffPop(:,ci)  = c1;
+                OffSkill(ci)  = sk1;
+                OffCost(ci)   = Tasks{sk1}(c1);
+                ci = ci + 1;
+            end
+            if ci <= N
+                OffPop(:,ci)  = c2;
+                OffSkill(ci)  = sk2;
+                OffCost(ci)   = Tasks{sk2}(c2);
+                ci = ci + 1;
+            end
         end
 
-        OffPop(:,c1_idx) = c1;  OffSkill(c1_idx) = sk1;
-        OffPop(:,c2_idx) = c2;  OffSkill(c2_idx) = sk2;
+        % Handle last individual if N is odd
+        if mod(N,2) == 1 && ci <= N
+            p = idx_perm(N);
+            c = PolyMut(Pop(:,p), D, pm, eta_m);
+            sk = Skill(p);
+            OffPop(:,ci) = c;
+            OffSkill(ci) = sk;
+            OffCost(ci)  = Tasks{sk}(c);
+        end
+
+        % ── (μ+λ)-Selection based on Scalar Fitness ─────────────
+        AllPop   = [Pop,   OffPop];
+        AllCost  = [Cost,  OffCost];
+        AllSkill = [Skill, OffSkill];
+
+        % Compute scalar fitness via intra-task ranking
+        ScalarFit = zeros(1, 2*N);
+        for k = 1:K
+            idx = find(AllSkill == k);
+            if isempty(idx), continue; end
+            [~, ord] = sort(AllCost(idx), 'ascend');
+            ranks = zeros(1, length(idx));
+            ranks(ord) = 1:length(idx);
+            ScalarFit(idx) = 1 ./ ranks;   % scalar fitness φ_i = 1 / rank_τ_i(i)
+        end
+
+        % Elitist selection: top N individuals by descending scalar fitness
+        [~, sel_idx] = sort(ScalarFit, 'descend');
+        sel_idx = sel_idx(1:N);
+
+        Pop   = AllPop(:, sel_idx);
+        Cost  = AllCost(sel_idx);
+        Skill = AllSkill(sel_idx);
+
+        % ── Update best solutions per task ───────────────────────
+        for k = 1:K
+            idx = find(Skill == k);
+            if ~isempty(idx)
+                [v, ii] = min(Cost(idx));
+                if v < bestF(k)
+                    bestF(k)   = v;
+                    bestX(:,k) = Pop(:, idx(ii));
+                end
+            end
+        end
     end
 end
 
 
-%% =========================================================
-%  Sbx：Simulated Binary Crossover，搜索空间 [0,1]
-%% =========================================================
-function [c1, c2] = Sbx(p1, p2, D, pc, eta)
-    c1 = p1;  c2 = p2;
-
+% ── Simulated Binary Crossover (SBX) ─────────────────────────────
+function [c1, c2] = SBX(p1, p2, D, pc, eta)
+    c1 = p1; c2 = p2;
     if rand() >= pc, return; end
-
-    dim_rand  = rand(D, 1);
-    u_rand    = rand(D, 1);
-    exp1      = 1 / (eta + 1);
-    neg_eta1  = -(eta + 1);             % 预计算 beta 的指数
-
     for j = 1:D
-        diff = p1(j) - p2(j);
-        if dim_rand(j) >= 0.5 || abs(diff) <= 1e-14
-            continue;
-        end
-
-        if diff < 0
-            y1 = p1(j);  y2 = p2(j);
+        if abs(p1(j)-p2(j)) <= 1e-14, continue; end
+        y1 = min(p1(j),p2(j)); y2 = max(p1(j),p2(j));
+        bd = min(y1, 1-y2);
+        beta = 1 + 2*bd/(y2-y1);
+        alp  = 2 - beta^(-(eta+1));
+        u = rand();
+        if u <= 1/alp
+            betaq = (u*alp)^(1/(eta+1));
         else
-            y1 = p2(j);  y2 = p1(j);
+            betaq = (1/(2-u*alp))^(1/(eta+1));
         end
-
-        % 展开 min(y1, 1-y2)：y1 在 [0,1] 内，1-y2 也是，取小者
-        spread = y2 - y1;
-        bd     = min(y1, 1 - y2);       % boundary distance
-        beta   = 1 + 2 * bd / spread;
-        alpha  = 2 - beta^neg_eta1;
-        u      = u_rand(j);
-        inv_a  = 1 / alpha;
-
-        if u <= inv_a
-            betaq = (u * alpha)^exp1;
-        else
-            betaq = (1 / (2 - u * alpha))^exp1;
-        end
-
-        half_sum  = 0.5 * (y1 + y2);
-        half_diff = 0.5 * betaq * spread;
-        c1(j) = max(0, min(1, half_sum - half_diff));
-        c2(j) = max(0, min(1, half_sum + half_diff));
+        half_s = 0.5*(y1+y2);
+        half_d = 0.5*betaq*(y2-y1);
+        c1(j) = max(0, min(1, half_s - half_d));
+        c2(j) = max(0, min(1, half_s + half_d));
     end
 end
 
 
-%% =========================================================
-%  Pm：Polynomial Mutation，搜索空间 [0,1]
-%% =========================================================
-function c = Pm(p, D, eta, pm_rate)
+% ── Polynomial Mutation ──────────────────────────────────────────
+function c = PolyMut(p, D, pm, eta)
     c = p;
-
-    dim_rand = rand(D, 1);
-    u_rand   = rand(D, 1);
-    exp1     = 1 / (eta + 1);
-    eta1     = eta + 1;                 % 预计算，避免循环内重复加法
-
     for j = 1:D
-        if dim_rand(j) >= pm_rate, continue; end
-
-        x = p(j);
-        u = u_rand(j);
+        if rand() >= pm, continue; end
+        x = p(j); u = rand();
         if u <= 0.5
-            delta = (2*u + (1 - 2*u) * (1-x)^eta1)^exp1 - 1;
+            delta = (2*u + (1-2*u)*(1-x)^(eta+1))^(1/(eta+1)) - 1;
         else
-            delta = 1 - (2*(1-u) + 2*(u-0.5) * x^eta1)^exp1;
+            delta = 1 - (2*(1-u) + 2*(u-0.5)*x^(eta+1))^(1/(eta+1));
         end
-
-        c(j) = max(0, min(1, x + delta));
+        c(j) = max(0, min(1, x+delta));
     end
 end
 
 
-%% =========================================================
-%  EvaluateAll：初始化全量评估（Algorithm 1, Step 2）
-%% =========================================================
-function FCost = EvaluateAll(Pop, Tasks, TaskLb, TaskRange, TaskDim, K, N)
-    FCost = inf(K, N);
-    for k = 1:K
-        func = Tasks{k}.func;
-        lb   = TaskLb{k};
-        rng  = TaskRange{k};
-        dim  = TaskDim(k);
-        for i = 1:N
-            FCost(k,i) = func(lb + Pop(1:dim,i) .* rng);
-        end
-    end
-end
-
-
-%% =========================================================
-%  CalcMetrics：Factorial Rank / Scalar Fitness / Skill Factor
-%  Definition 2、3、4（Section II）
-%  inf 个体赋予哨兵排名 N+1，不参与 skill factor 竞争
-%% =========================================================
-function [Rank, ScalarFit, Skill] = CalcMetrics(FCost)
-    [K, N] = size(FCost);
-    Rank   = repmat(N+1, K, N);
-    for k = 1:K
-        row  = FCost(k,:);
-        vIdx = find(row < Inf);         % 一次 find 同时得到索引和数量
-        if isempty(vIdx), continue; end
-        [~, order]      = sort(row(vIdx), 'ascend');
-        Rank(k, vIdx(order)) = 1:numel(vIdx);
-    end
-    [minRank, Skill] = min(Rank, [], 1);
-    ScalarFit = 1 ./ minRank;
-end
-
-
-%% =========================================================
-%  Selection：环境选择（Algorithm 1, Step v）
-%% =========================================================
-function [NewPop, NewCost, NewSkill] = Selection(Pop, Cost, OffPop, OffCost, N)
-    AllPop  = [Pop,  OffPop];
-    AllCost = [Cost, OffCost];
-    [~, ScalarFit, AllSkill] = CalcMetrics(AllCost);
-    [~, idx] = sort(ScalarFit, 'descend');
-    idx      = idx(1:N);
-    NewPop   = AllPop(:,  idx);
-    NewCost  = AllCost(:, idx);
-    NewSkill = AllSkill(idx);
-end
-
-
-%% =========================================================
-%  工具函数
-%% =========================================================
+% ── Parameter retrieval with default ─────────────────────────────
 function v = GetParam(s, f, d)
-    if isfield(s, f), v = s.(f); else, v = d; end
-end
-
-function n = GetName(t, i)
-    if isfield(t, 'name'), n = t.name; else, n = sprintf('Task%d', i); end
+    if isfield(s,f), v = s.(f); else, v = d; end
 end
