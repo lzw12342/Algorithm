@@ -1,25 +1,44 @@
-function T = DErand1(P, F, n)
-% DE/rand/1 变异算子（向量化 + 小群体安全版）
-% 输入：
-%   P : (D × N) 父代种群
-%   F : 缩放因子（标量或 1×n）
-%   n : 需要生成的子代数量（默认 = N）
-% 输出：
-%   T : (D × n) 子代
+function T = DErand1(P, F)
+% Differential Evolution mutation operator: DE/rand/1 (vectorized, strict distinct indices)
+%
+%   T = DErand1(P, F)
+%
+% Inputs:
+%   P     - Parent population matrix, size (D × N), where D is dimensionality,
+%           N is population size
+%   F     - Scaling factor (scalar or 1×N vector)
+%
+% Output:
+%   T     - Mutant (trial) vectors, size (D × N)
+%
+% Description:
+%   Implements the classic DE/rand/1 mutation strategy:
+%       v_i = x_{r1} + F_i × (x_{r2} - x_{r3})
+%   where r1, r2, r3 are three **mutually distinct** random indices chosen
+%   from 1 to N for each individual i.
+%   Vectorized implementation using random permutations per column.
+%   Safe for small populations (N ≥ 3 required for meaningful operation).
 
-    N = size(P,2);
-    if nargin < 3
-        n = N;
+    % Get population size
+    [D, N] = size(P);
+
+    % Input validation (optional but recommended for strict version)
+    if N < 3
+        error('DE/rand/1 requires at least 3 individuals (N >= 3)');
     end
 
-    % 为 n 个子代各自从 P 中随机选 r1,r2,r3（允许重复选同一个体的不同位置）
-    % 思路：生成 n 列、每列从 1:N 中选3个不重复索引
-    % 用随机排列矩阵：(N × n)，取前3行
-    [~, rnd] = sort(rand(N, n), 1);    % (N × n)，每列是 1:N 的随机排列
+    % Generate random permutations for each of the N target vectors
+    % rnd: (N × N) matrix, each column is a random permutation of 1:N
+    [~, rnd] = sort(rand(N, N), 1);
 
-    r1 = rnd(1,:);
-    r2 = rnd(2,:);
-    r3 = rnd(3,:);
+    % For each column (each target individual), select three distinct random indices
+    % We take the first three rows of the permutation matrix
+    r1 = rnd(1, :);   % 1×N
+    r2 = rnd(2, :);
+    r3 = rnd(3, :);
 
-    T = P(:,r1) + F .* (P(:,r2) - P(:,r3));  % (D × n)
+    % Compute mutants using broadcasting
+    % T(:,k) = P(:,r1(k)) + F(k) * (P(:,r2(k)) - P(:,r3(k)))
+    T = P(:, r1) + F .* (P(:, r2) - P(:, r3));   % (D × N)
+
 end
