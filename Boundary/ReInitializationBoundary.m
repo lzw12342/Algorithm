@@ -1,4 +1,4 @@
-function P = ReInitialization(P, lb, ub)
+function P = ReInitializationBoundary(P, lb, ub)
 % Re-initialization Boundary Handling (Vectorized Implementation)
 % Resets out-of-bound particles to random positions within bounds.
 %

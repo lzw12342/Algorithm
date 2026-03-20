@@ -1,4 +1,4 @@
-function P = Reflection(P, lb, ub)
+function P = ReflectionBoundary(P, lb, ub)
 % Reflection Boundary Handling (Vectorized Implementation)
 % Supports lb/ub as column vectors (D×1), row vectors (1×D), or scalars
 %
