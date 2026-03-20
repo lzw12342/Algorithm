@@ -1,1 +1,1 @@
-- LogX form [A new logistic distribution based crossover operator for real-coded genetic algorithm](https://www.tandfonline.com/doi/full/10.1080/00949655.2020.1832093)
+- LogisticX form [A new logistic distribution based crossover operator for real-coded genetic algorithm](https://www.tandfonline.com/doi/full/10.1080/00949655.2020.1832093)
