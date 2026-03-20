@@ -1,2 +1,3 @@
 - UNDX form [A Real-coded Genetic Algorithm using the Unimodal Normal Distribution Crossover](https://link.springer.com/chapter/10.1007/978-3-642-18965-4_8)
+- LaplaceX from [A new crossover operator for real coded genetic algorithms](https://www.sciencedirect.com/science/article/pii/S0096300306014287)
 - LogisticX form [A new logistic distribution based crossover operator for real-coded genetic algorithm](https://www.tandfonline.com/doi/full/10.1080/00949655.2020.1832093)
