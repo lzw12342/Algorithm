@@ -34,8 +34,8 @@ if nargin < 3 || isempty(s)
     s = 1.0;
 end
 
-if ~isnumeric(s) || ~isscalar(s) || s <= 0
-    error('LogisticX: scale parameter s must be a positive scalar.');
+if ~isnumeric(s) || ~isvector(s) || any(s <= 0)
+    error('LogisticX: scale parameter s must be a positive scalar or (1 x N) row vector.');
 end
 
 if ~isequal(size(P1), size(P2))
@@ -57,8 +57,14 @@ u = max(1e-16, min(1 - 1e-16, u));
 % --------------------------------------------------------------------------
 % 3. Inverse-CDF transform (Eq. 17, mu = 0)
 %    beta = s * log(u / (1-u))
+%    s can be scalar or (1 x N) row vector
 % --------------------------------------------------------------------------
-beta = s * log(u ./ (1 - u));
+if isscalar(s)
+    beta = s * log(u ./ (1 - u));
+else
+    % s is (1 x N): broadcast across D rows
+    beta = s .* log(u ./ (1 - u));   % (D x N) .* (1 x N) → (D x N)
+end
 
 % --------------------------------------------------------------------------
 % 4. Compute half-step (shared by both offspring)
