@@ -4,8 +4,8 @@
 - [UNDX](https://github.com/lzw12342/Algorithm/blob/main/Crossover/real/UNDX.m)
 - [LaplaceX](https://github.com/lzw12342/Algorithm/blob/main/Crossover/real/LaplaceX.m)
 - [LogisticX](https://github.com/lzw12342/Algorithm/blob/main/Crossover/real/LogisticX.m)
-- [binomal crossover](https://github.com/lzw12342/Algorithm/blob/main/Crossover/real/BinomialCrossover.m)
-- [eigenvector based crossover](https://github.com/lzw12342/Algorithm/blob/main/Crossover/real/eigenvector_based_crossover)
+- [BinomalCrossover](https://github.com/lzw12342/Algorithm/blob/main/Crossover/real/BinomialCrossover.m)
+- [Eigenvector-based-Crossover](https://github.com/lzw12342/Algorithm/blob/main/Crossover/real/eigenvector_based_crossover)
 ### permutation 
 - [OX](https://github.com/lzw12342/Algorithm/blob/main/Crossover/permutation/OX.m)
 - [PMX](https://github.com/lzw12342/Algorithm/blob/main/Crossover/permutation/PMX.m)
