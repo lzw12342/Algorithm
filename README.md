@@ -1,11 +1,11 @@
 # Evolution Computation
 ## Crossover
 ### real
-- [UNDX](https://github.com/lzw12342/Algorithm/blob/main/GA/Crossover/UNDX.m)
-- [LaplaceX](https://github.com/lzw12342/Algorithm/blob/main/GA/Crossover/LaplaceX.m)
-- [LogisticX](https://github.com/lzw12342/Algorithm/blob/main/GA/Crossover/LogisticX.m)
-- [binomal crossover](https://github.com/lzw12342/Algorithm/blob/main/DE/Crossover/BinomialCrossover.m)
-- [eigenvector based crossover](https://github.com/lzw12342/Algorithm/tree/main/DE/Crossover/eigenvector_based_crossover)
+- [UNDX](https://github.com/lzw12342/Algorithm/blob/main/Crossover/UNDX.m)
+- [LaplaceX](https://github.com/lzw12342/Algorithm/blob/main/Crossover/LaplaceX.m)
+- [LogisticX](https://github.com/lzw12342/Algorithm/blob/main/Crossover/LogisticX.m)
+- [binomal crossover](https://github.com/lzw12342/Algorithm/blob/main/Crossover/BinomialCrossover.m)
+- [eigenvector based crossover](https://github.com/lzw12342/Algorithm/blob/main/Crossover/eigenvector_based_crossover)
 ### permutation 
 - [OX](https://github.com/lzw12342/Algorithm/blob/main/GA/Crossover/OX.m)
 - [PMX](https://github.com/lzw12342/Algorithm/blob/main/GA/Crossover/PMX.m)
