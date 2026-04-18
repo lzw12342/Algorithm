@@ -1,4 +1,4 @@
-function [P, P_fit] = GreedySelection(P, P_fit, T, T_fit)
+function [P, P_fit, has_improved, improved] = GreedySelection(P, P_fit, T, T_fit)
 % Greedy selection for Differential Evolution (one-to-one survivor selection)
 %
 %   [P, P_fit] = GreedySelection(P, P_fit, T, T_fit)
@@ -24,8 +24,10 @@ function [P, P_fit] = GreedySelection(P, P_fit, T, T_fit)
     end
     
     % Greedy replacement: keep the better one
-    improvement = T_fit <= P_fit;  % For minimization
-    
-    P(:, improvement) = T(:, improvement);
-    P_fit(improvement) = T_fit(improvement);
+    improved = T_fit <= P_fit;
+    has_improved = any(improved);
+    if has_improved
+        P(:,improved) = T(:,improved);
+        P_fit(improved) = T_fit(improved);
+    end
 end
