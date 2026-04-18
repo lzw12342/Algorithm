@@ -7,8 +7,8 @@
 - [binomal crossover](https://github.com/lzw12342/Algorithm/blob/main/Crossover/real/BinomialCrossover/real.m)
 - [eigenvector based crossover](https://github.com/lzw12342/Algorithm/blob/main/Crossover/real/eigenvector_based_crossover)
 ### permutation 
-- [OX](https://github.com/lzw12342/Algorithm/blob/main/GA/Crossover/permutation/OX.m)
-- [PMX](https://github.com/lzw12342/Algorithm/blob/main/GA/Crossover/permutation/PMX.m)
+- [OX](https://github.com/lzw12342/Algorithm/blob/main/Crossover/permutation/OX.m)
+- [PMX](https://github.com/lzw12342/Algorithm/blob/main/Crossover/permutation/PMX.m)
 ## Mutation
 - [DE/rand/1](https://github.com/lzw12342/Algorithm/blob/main/Mutation/DErand1.m)
 - [DE/current-to-best/1](https://github.com/lzw12342/Algorithm/blob/main/Mutation/DEcurrent2best.m)
