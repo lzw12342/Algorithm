@@ -10,15 +10,18 @@ function P = ReflectionBoundary(P, lb, ub)
 % Output:
 %   P  - D×N matrix after boundary reflection processing
 
-    % Ensure lb and ub are column vectors (D×1) for proper broadcasting
     lb = lb(:);
     ub = ub(:);
 
     % Lower boundary reflection: out-of-bound positions become 2*lb - P
     mask_lb = P < lb;                           % D×N logical matrix
-    P = P .* ~mask_lb + (2*lb - P) .* mask_lb;
+    if any(mask_lb, 'all')
+        P = P .* ~mask_lb + (2*lb - P) .* mask_lb;
+    end
 
     % Upper boundary reflection: out-of-bound positions become 2*ub - P
-    mask_ub = P > ub;                           % D×N logical matrix  
-    P = P .* ~mask_ub + (2*ub - P) .* mask_ub;
+    mask_ub = P > ub;                           % D×N logical matrix
+    if any(mask_ub, 'all')
+        P = P .* ~mask_ub + (2*ub - P) .* mask_ub;
+    end
 end
